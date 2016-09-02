@@ -36,6 +36,34 @@ func TestAccAWSKinesisFirehoseDeliveryStream_s3basic(t *testing.T) {
 	})
 }
 
+func TestAccAWSKinesisFirehoseDeliveryStream_s3WithCloudwatchLogging(t *testing.T) {
+	var stream firehose.DeliveryStreamDescription
+	ri := acctest.RandInt()
+	config := fmt.Sprintf(testAccKinesisFirehoseDeliveryStreamConfig_s3WithCloudwatchLogging,
+		ri, os.Getenv("AWS_ACCOUNT_ID"), ri, ri, ri, ri, ri)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:     testAccKinesisFirehosePreCheck(t),
+		Providers:    testAccProviders,
+		CheckDestroy: testAccCheckKinesisFirehoseDeliveryStreamDestroy,
+		Steps: []resource.TestStep{
+			resource.TestStep{
+				Config: config,
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckKinesisFirehoseDeliveryStreamExists("aws_kinesis_firehose_delivery_stream.test_stream", &stream),
+					testAccCheckAWSKinesisFirehoseDeliveryStreamAttributes(&stream, nil, nil, nil),
+					resource.TestCheckResourceAttr(
+						"aws_kinesis_firehose_delivery_stream.test_stream", "s3_configuration.0.cloudwatch_logging_options.1698368721.enabled", "true"),
+					resource.TestCheckResourceAttr(
+						"aws_kinesis_firehose_delivery_stream.test_stream", "s3_configuration.0.cloudwatch_logging_options.1698368721.enabled", "true"),
+					resource.TestCheckResourceAttr(
+						"aws_kinesis_firehose_delivery_stream.test_stream", "s3_configuration.0.cloudwatch_logging_options.1698368721.enabled", "true"),
+				),
+			},
+		},
+	})
+}
+
 func TestAccAWSKinesisFirehoseDeliveryStream_s3ConfigUpdates(t *testing.T) {
 	var stream firehose.DeliveryStreamDescription
 
@@ -338,6 +366,32 @@ resource "aws_iam_role_policy" "firehose" {
 EOF
 }
 
+`
+
+var testAccKinesisFirehoseDeliveryStreamConfig_s3WithCloudwatchLogging = testAccKinesisFirehoseDeliveryStreamBaseConfig + `
+resource "aws_cloudwatch_log_group" "test" {
+  name = "example-%d"
+}
+
+resource "aws_cloudwatch_log_stream" "test" {
+  name = "sample-log-stream-test-%d"
+  log_group_name = "${aws_cloudwatch_log_group.test.name}"
+}
+
+resource "aws_kinesis_firehose_delivery_stream" "test_stream" {
+  depends_on = ["aws_iam_role_policy.firehose"]
+  name = "terraform-kinesis-firehose-basictest-%d"
+  destination = "s3"
+  s3_configuration {
+    role_arn = "${aws_iam_role.firehose.arn}"
+    bucket_arn = "${aws_s3_bucket.bucket.arn}"
+    cloudwatch_logging_options {
+	enabled = true
+	log_group_name = "${aws_cloudwatch_log_group.test.name}"
+	log_stream_name = "${aws_cloudwatch_log_stream.test.name}"
+    }
+  }
+}
 `
 
 var testAccKinesisFirehoseDeliveryStreamConfig_s3basic = testAccKinesisFirehoseDeliveryStreamBaseConfig + `

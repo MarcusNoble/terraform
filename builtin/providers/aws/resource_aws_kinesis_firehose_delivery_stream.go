@@ -13,6 +13,34 @@ import (
 	"github.com/hashicorp/terraform/helper/schema"
 )
 
+func cloudWatchLoggingOptionsSchema() *schema.Schema {
+	return &schema.Schema{
+		Type:     schema.TypeSet,
+		MaxItems: 1,
+		Optional: true,
+		Computed: true,
+		Elem: &schema.Resource{
+			Schema: map[string]*schema.Schema{
+				"enabled": {
+					Type:     schema.TypeBool,
+					Optional: true,
+					Default:  false,
+				},
+
+				"log_group_name": {
+					Type:     schema.TypeString,
+					Optional: true,
+				},
+
+				"log_stream_name": {
+					Type:     schema.TypeString,
+					Optional: true,
+				},
+			},
+		},
+	}
+}
+
 func resourceAwsKinesisFirehoseDeliveryStream() *schema.Resource {
 	return &schema.Resource{
 		Create: resourceAwsKinesisFirehoseDeliveryStreamCreate,
@@ -135,6 +163,8 @@ func resourceAwsKinesisFirehoseDeliveryStream() *schema.Resource {
 							Type:     schema.TypeString,
 							Optional: true,
 						},
+
+						"cloudwatch_logging_options": cloudWatchLoggingOptionsSchema(),
 					},
 				},
 			},
@@ -179,6 +209,8 @@ func resourceAwsKinesisFirehoseDeliveryStream() *schema.Resource {
 							Type:     schema.TypeString,
 							Required: true,
 						},
+
+						"cloudwatch_logging_options": cloudWatchLoggingOptionsSchema(),
 					},
 				},
 			},
@@ -286,6 +318,8 @@ func resourceAwsKinesisFirehoseDeliveryStream() *schema.Resource {
 								return
 							},
 						},
+
+						"cloudwatch_logging_options": cloudWatchLoggingOptionsSchema(),
 					},
 				},
 			},
@@ -321,9 +355,10 @@ func createS3Config(d *schema.ResourceData) *firehose.S3DestinationConfiguration
 			IntervalInSeconds: aws.Int64(int64(s3["buffer_interval"].(int))),
 			SizeInMBs:         aws.Int64(int64(s3["buffer_size"].(int))),
 		},
-		Prefix:                  extractPrefixConfiguration(s3),
-		CompressionFormat:       aws.String(s3["compression_format"].(string)),
-		EncryptionConfiguration: extractEncryptionConfiguration(s3),
+		Prefix:                   extractPrefixConfiguration(s3),
+		CompressionFormat:        aws.String(s3["compression_format"].(string)),
+		EncryptionConfiguration:  extractEncryptionConfiguration(s3),
+		CloudWatchLoggingOptions: extractCloudWatchLoggingConfiguration(s3),
 	}
 }
 
@@ -337,9 +372,10 @@ func updateS3Config(d *schema.ResourceData) *firehose.S3DestinationUpdate {
 			IntervalInSeconds: aws.Int64((int64)(s3["buffer_interval"].(int))),
 			SizeInMBs:         aws.Int64((int64)(s3["buffer_size"].(int))),
 		},
-		Prefix:                  extractPrefixConfiguration(s3),
-		CompressionFormat:       aws.String(s3["compression_format"].(string)),
-		EncryptionConfiguration: extractEncryptionConfiguration(s3),
+		Prefix:                   extractPrefixConfiguration(s3),
+		CompressionFormat:        aws.String(s3["compression_format"].(string)),
+		EncryptionConfiguration:  extractEncryptionConfiguration(s3),
+		CloudWatchLoggingOptions: extractCloudWatchLoggingConfiguration(s3),
 	}
 }
 
@@ -355,6 +391,30 @@ func extractEncryptionConfiguration(s3 map[string]interface{}) *firehose.Encrypt
 	return &firehose.EncryptionConfiguration{
 		NoEncryptionConfig: aws.String("NoEncryption"),
 	}
+}
+
+func extractCloudWatchLoggingConfiguration(s3 map[string]interface{}) *firehose.CloudWatchLoggingOptions {
+	if v, ok := s3["cloudwatch_logging_options"]; ok {
+
+		//we only allow 1 Options block for CloudWatch
+		loggingConfig := v.(*schema.Set).List()[0].(map[string]interface{})
+
+		loggingOptions := &firehose.CloudWatchLoggingOptions{
+			Enabled: aws.Bool(loggingConfig["enabled"].(bool)),
+		}
+
+		if v, ok := loggingConfig["log_group_name"]; ok {
+			loggingOptions.LogGroupName = aws.String(v.(string))
+		}
+
+		if v, ok := loggingConfig["log_stream_name"]; ok {
+			loggingOptions.LogStreamName = aws.String(v.(string))
+		}
+
+		return loggingOptions
+	}
+
+	return nil
 }
 
 func extractPrefixConfiguration(s3 map[string]interface{}) *string {
@@ -375,12 +435,13 @@ func createRedshiftConfig(d *schema.ResourceData, s3Config *firehose.S3Destinati
 	redshift := rl[0].(map[string]interface{})
 
 	return &firehose.RedshiftDestinationConfiguration{
-		ClusterJDBCURL:  aws.String(redshift["cluster_jdbcurl"].(string)),
-		Password:        aws.String(redshift["password"].(string)),
-		Username:        aws.String(redshift["username"].(string)),
-		RoleARN:         aws.String(redshift["role_arn"].(string)),
-		CopyCommand:     extractCopyCommandConfiguration(redshift),
-		S3Configuration: s3Config,
+		ClusterJDBCURL:           aws.String(redshift["cluster_jdbcurl"].(string)),
+		Password:                 aws.String(redshift["password"].(string)),
+		Username:                 aws.String(redshift["username"].(string)),
+		RoleARN:                  aws.String(redshift["role_arn"].(string)),
+		CopyCommand:              extractCopyCommandConfiguration(redshift),
+		S3Configuration:          s3Config,
+		CloudWatchLoggingOptions: extractCloudWatchLoggingConfiguration(redshift),
 	}, nil
 }
 
@@ -394,12 +455,13 @@ func updateRedshiftConfig(d *schema.ResourceData, s3Update *firehose.S3Destinati
 	redshift := rl[0].(map[string]interface{})
 
 	return &firehose.RedshiftDestinationUpdate{
-		ClusterJDBCURL: aws.String(redshift["cluster_jdbcurl"].(string)),
-		Password:       aws.String(redshift["password"].(string)),
-		Username:       aws.String(redshift["username"].(string)),
-		RoleARN:        aws.String(redshift["role_arn"].(string)),
-		CopyCommand:    extractCopyCommandConfiguration(redshift),
-		S3Update:       s3Update,
+		ClusterJDBCURL:           aws.String(redshift["cluster_jdbcurl"].(string)),
+		Password:                 aws.String(redshift["password"].(string)),
+		Username:                 aws.String(redshift["username"].(string)),
+		RoleARN:                  aws.String(redshift["role_arn"].(string)),
+		CopyCommand:              extractCopyCommandConfiguration(redshift),
+		S3Update:                 s3Update,
+		CloudWatchLoggingOptions: extractCloudWatchLoggingConfiguration(redshift),
 	}, nil
 }
 
@@ -413,13 +475,14 @@ func createElasticsearchConfig(d *schema.ResourceData, s3Config *firehose.S3Dest
 	es := esList[0].(map[string]interface{})
 
 	config := &firehose.ElasticsearchDestinationConfiguration{
-		BufferingHints:  extractBufferingHints(es),
-		DomainARN:       aws.String(es["domain_arn"].(string)),
-		IndexName:       aws.String(es["index_name"].(string)),
-		RetryOptions:    extractRetryOptions(es),
-		RoleARN:         aws.String(es["role_arn"].(string)),
-		TypeName:        aws.String(es["type_name"].(string)),
-		S3Configuration: s3Config,
+		BufferingHints:           extractBufferingHints(es),
+		DomainARN:                aws.String(es["domain_arn"].(string)),
+		IndexName:                aws.String(es["index_name"].(string)),
+		RetryOptions:             extractRetryOptions(es),
+		RoleARN:                  aws.String(es["role_arn"].(string)),
+		TypeName:                 aws.String(es["type_name"].(string)),
+		S3Configuration:          s3Config,
+		CloudWatchLoggingOptions: extractCloudWatchLoggingConfiguration(es),
 	}
 
 	if indexRotationPeriod, ok := es["index_rotation_period"]; ok {
@@ -442,13 +505,14 @@ func updateElasticsearchConfig(d *schema.ResourceData, s3Update *firehose.S3Dest
 	es := esList[0].(map[string]interface{})
 
 	update := &firehose.ElasticsearchDestinationUpdate{
-		BufferingHints: extractBufferingHints(es),
-		DomainARN:      aws.String(es["domain_arn"].(string)),
-		IndexName:      aws.String(es["index_name"].(string)),
-		RetryOptions:   extractRetryOptions(es),
-		RoleARN:        aws.String(es["role_arn"].(string)),
-		TypeName:       aws.String(es["type_name"].(string)),
-		S3Update:       s3Update,
+		BufferingHints:           extractBufferingHints(es),
+		DomainARN:                aws.String(es["domain_arn"].(string)),
+		IndexName:                aws.String(es["index_name"].(string)),
+		RetryOptions:             extractRetryOptions(es),
+		RoleARN:                  aws.String(es["role_arn"].(string)),
+		TypeName:                 aws.String(es["type_name"].(string)),
+		S3Update:                 s3Update,
+		CloudWatchLoggingOptions: extractCloudWatchLoggingConfiguration(es),
 	}
 
 	if indexRotationPeriod, ok := es["index_rotation_period"]; ok {
