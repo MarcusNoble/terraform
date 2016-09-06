@@ -45,6 +45,26 @@ func TestAccAWSALB_basic(t *testing.T) {
 	})
 }
 
+func TestAccAWSALB_generatedName(t *testing.T) {
+	var conf elbv2.LoadBalancer
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:      func() { testAccPreCheck(t) },
+		IDRefreshName: "aws_alb.alb_test",
+		Providers:     testAccProviders,
+		CheckDestroy:  testAccCheckAWSALBDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccAWSALBConfig_generatedName(),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					testAccCheckAWSALBExists("aws_alb.alb_test", &conf),
+					resource.TestCheckResourceAttrSet("aws_alb.alb_test", "name"),
+				),
+			},
+		},
+	})
+}
+
 func TestAccAWSALB_tags(t *testing.T) {
 	var conf elbv2.LoadBalancer
 	albName := fmt.Sprintf("testaccawsalb-basic-%s", acctest.RandStringFromCharSet(10, acctest.CharSetAlphaNum))
@@ -291,6 +311,72 @@ resource "aws_security_group" "alb_test" {
     TestName = "TestAccAWSALB_basic"
   }
 }`, albName)
+}
+
+func testAccAWSALBConfig_generatedName() string {
+	return fmt.Sprintf(`resource "aws_alb" "alb_test" {
+  internal        = false
+  security_groups = ["${aws_security_group.alb_test.id}"]
+  subnets         = ["${aws_subnet.alb_test.*.id}"]
+
+  idle_timeout = 30
+  enable_deletion_protection = false
+
+  tags {
+    TestName = "TestAccAWSALB_basic"
+  }
+}
+
+variable "subnets" {
+  default = ["10.0.1.0/24", "10.0.2.0/24"]
+  type    = "list"
+}
+
+data "aws_availability_zones" "available" {}
+
+resource "aws_vpc" "alb_test" {
+  cidr_block = "10.0.0.0/16"
+
+  tags {
+    TestName = "TestAccAWSALB_basic"
+  }
+}
+
+resource "aws_subnet" "alb_test" {
+  count                   = 2
+  vpc_id                  = "${aws_vpc.alb_test.id}"
+  cidr_block              = "${element(var.subnets, count.index)}"
+  map_public_ip_on_launch = true
+  availability_zone       = "${element(data.aws_availability_zones.available.names, count.index)}"
+
+  tags {
+    TestName = "TestAccAWSALB_basic"
+  }
+}
+
+resource "aws_security_group" "alb_test" {
+  name        = "allow_all_alb_test"
+  description = "Used for ALB Testing"
+  vpc_id      = "${aws_vpc.alb_test.id}"
+
+  ingress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags {
+    TestName = "TestAccAWSALB_basic"
+  }
+}`)
 }
 func testAccAWSALBConfig_updatedTags(albName string) string {
 	return fmt.Sprintf(`resource "aws_alb" "alb_test" {
